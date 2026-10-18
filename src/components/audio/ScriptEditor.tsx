@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, FileText, UploadCloud, SlidersHorizontal, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Sparkles, FileText, UploadCloud, SlidersHorizontal, ChevronDown, ChevronUp, X, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../common/Button';
 import { LipSyncTuningSettings, DEFAULT_LIPSYNC_TUNING, TransitionSmoothness } from '../../types/timeline';
 import { rhubarbAdapter } from '../../services/lipsync/RhubarbAdapter';
@@ -14,6 +14,7 @@ export interface ScriptEditorProps {
   hasAudio: boolean;
   tuningSettings?: LipSyncTuningSettings;
   onTuningChange?: (newTuning: LipSyncTuningSettings) => void;
+  onExportReport?: () => void;
 }
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -25,6 +26,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   hasAudio,
   tuningSettings = DEFAULT_LIPSYNC_TUNING,
   onTuningChange,
+  onExportReport,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -204,6 +206,18 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             <span>Tuning</span>
             {showTuning ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
           </button>
+
+          {onExportReport && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onExportReport}
+              icon={<FileSpreadsheet className="w-3 h-3 text-emerald-600" />}
+              title="Inspect articulation and export Word-to-Mouth or Detailed Cue reports (CSV/JSON)"
+            >
+              Export Report
+            </Button>
+          )}
         </div>
 
         <Button

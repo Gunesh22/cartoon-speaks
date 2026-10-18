@@ -34,6 +34,7 @@ import { CharacterEditor } from '../components/character/CharacterEditor';
 import { MouthAlignmentDebugger } from '../components/debugger/MouthAlignmentDebugger';
 import { Modal } from '../components/common/Modal';
 import { LipSyncDiagnosticsPanel } from '../components/debugger/LipSyncDiagnosticsPanel';
+import { LipSyncReportModal } from '../components/debugger/LipSyncReportModal';
 import {
   Video,
   CheckCircle2,
@@ -45,6 +46,7 @@ import {
   Crosshair,
   AlertCircle,
   Activity,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -56,6 +58,7 @@ export const App: React.FC = () => {
   const [isGeneratingLipSync, setIsGeneratingLipSync] = useState(false);
   const [isEditingPlacementModal, setIsEditingPlacementModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [globalMessage, setGlobalMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -898,6 +901,7 @@ export const App: React.FC = () => {
                     hasAudio={!!currentAudio}
                     tuningSettings={project.lipSyncSettings}
                     onTuningChange={(tuning) => handleUpdateProject({ lipSyncSettings: tuning })}
+                    onExportReport={() => setIsReportModalOpen(true)}
                   />
                 </div>
               </div>
@@ -909,6 +913,14 @@ export const App: React.FC = () => {
                     Mouth Cue Timeline
                   </span>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsReportModalOpen(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+                      title="Inspect articulation and export Word-to-Mouth or Detailed Cue Timing reports (CSV/JSON)"
+                    >
+                      <FileSpreadsheet className="w-3 h-3 text-emerald-600" />
+                      <span>Export Report</span>
+                    </button>
                     <button
                       onClick={() => setShowDiagnostics(!showDiagnostics)}
                       className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors ${
@@ -1095,6 +1107,16 @@ export const App: React.FC = () => {
           />
         </Modal>
       )}
+
+      {/* Lip-Sync Articulation & Detailed Timing Report Modal */}
+      <LipSyncReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        cues={timeline.cues}
+        scriptText={project?.scriptText}
+        projectName={project?.name || 'cartoon-speaks'}
+        duration={audioPlayer.duration || currentAudio?.duration || timeline.duration}
+      />
     </AppShell>
   );
 };
