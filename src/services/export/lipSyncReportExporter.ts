@@ -1,18 +1,22 @@
-import { TimelineCue } from '../../types/timeline';
+import { TimelineCue, CueAlignmentSource } from '../../types/timeline';
 
 export interface WordMouthReportEntry {
   wordIndex: number;
   spokenText: string;
   shapeSequence: string; // e.g. "A -> D -> B"
   shapes: string[];      // e.g. ["A", "D", "B"]
+  phonemes?: string;     // e.g. "s-w-aa-g-t"
+  ipa?: string;          // e.g. "sʋɑːɡt̪"
   startTime: number;     // in seconds
   endTime: number;       // in seconds
   durationMs: number;    // in milliseconds
   shapeCount: number;
   shapesDetail: string;  // e.g. "A:80ms | D:150ms | B:100ms"
-  alignmentSource: 'heuristic' | 'rhubarb' | 'manual' | 'unknown';
+  alignmentSource: CueAlignmentSource;
   cues: Array<{
     shape: string;
+    phoneme?: string;
+    ipa?: string;
     start: number;
     end: number;
     durationMs: number;
@@ -26,8 +30,10 @@ export interface DetailedCueEntry {
   endTime: number;
   durationMs: number;
   mouthShape: string;
+  phoneme?: string;
+  ipa?: string;
   associatedWord: string;
-  alignmentSource: 'heuristic' | 'rhubarb' | 'manual' | 'unknown';
+  alignmentSource: CueAlignmentSource;
 }
 
 /**
@@ -85,14 +91,31 @@ export function generateWordToMouthReport(
 
     // Determine primary alignment source
     const sources = currentGroup.map((c) => c.source || 'unknown');
-    const primarySource =
+    const primarySource: CueAlignmentSource =
       sources.includes('manual')
         ? 'manual'
         : sources.includes('rhubarb')
         ? 'rhubarb'
+        : sources.includes('dictionary')
+        ? 'dictionary'
+        : sources.includes('phoneme-rule')
+        ? 'phoneme-rule'
+        : sources.includes('heuristic-fallback')
+        ? 'heuristic-fallback'
         : sources.includes('heuristic')
         ? 'heuristic'
         : 'unknown';
+
+    // Gather distinct phonemes and IPA from cues
+    const phonemesList = currentGroup
+      .map((c) => c.phoneme)
+      .filter((p): p is string => Boolean(p) && p !== 'silence' && p !== 'pause');
+    const phonemesStr = phonemesList.length > 0 ? Array.from(new Set(phonemesList)).join(', ') : undefined;
+
+    const ipaList = currentGroup
+      .map((c) => c.ipa)
+      .filter((ip): ip is string => Boolean(ip) && ip !== 'x');
+    const ipaStr = ipaList.length > 0 ? Array.from(new Set(ipaList)).join('') : undefined;
 
     let displayLabel = currentWordLabel || '[Unknown]';
     if (displayLabel.toLowerCase() === 'pause') displayLabel = '[Pause]';
@@ -103,14 +126,18 @@ export function generateWordToMouthReport(
       spokenText: displayLabel,
       shapeSequence,
       shapes,
+      phonemes: phonemesStr,
+      ipa: ipaStr,
       startTime: Number(startTime.toFixed(3)),
       endTime: Number(endTime.toFixed(3)),
       durationMs,
       shapeCount: shapes.length,
       shapesDetail,
-      alignmentSource: primarySource as WordMouthReportEntry['alignmentSource'],
+      alignmentSource: primarySource,
       cues: currentGroup.map((c) => ({
         shape: c.shape,
+        phoneme: c.phoneme,
+        ipa: c.ipa,
         start: Number(c.start.toFixed(3)),
         end: Number(c.end.toFixed(3)),
         durationMs: Math.round((c.end - c.start) * 1000),
@@ -184,28 +211,30 @@ export function generateDetailedCueTimings(
       wordLabel = '[Silence]';
     }
 
-    const source = (cue.source || 'unknown') as DetailedCueEntry['alignmentSource'];
-
     return {
       cueIndex: idx + 1,
       startTime: Number(cue.start.toFixed(3)),
       endTime: Number(cue.end.toFixed(3)),
       durationMs: Math.round((cue.end - cue.start) * 1000),
       mouthShape: cue.shape,
+      phoneme: cue.phoneme,
+      ipa: cue.ipa,
       associatedWord: wordLabel,
-      alignmentSource: source,
+      alignmentSource: (cue.source || 'unknown') as CueAlignmentSource,
     };
   });
 }
 
 /**
  * Serializes Word-to-Mouth report to CSV string with schema:
- * word_index,spoken_text,shape_sequence,start_time_s,end_time_s,total_duration_ms,shape_count,shapes_detail,alignment_source
+ * word_index,spoken_text,inferred_phonemes,ipa,shape_sequence,start_time_s,end_time_s,total_duration_ms,shape_count,shapes_detail,alignment_source
  */
 export function exportWordToMouthCsv(report: WordMouthReportEntry[]): string {
   const headers = [
     'word_index',
     'spoken_text',
+    'inferred_phonemes',
+    'ipa',
     'shape_sequence',
     'start_time_s',
     'end_time_s',
@@ -218,6 +247,8 @@ export function exportWordToMouthCsv(report: WordMouthReportEntry[]): string {
   const rows = report.map((entry) => [
     entry.wordIndex,
     escapeCsv(entry.spokenText),
+    escapeCsv(entry.phonemes || ''),
+    escapeCsv(entry.ipa || ''),
     escapeCsv(entry.shapeSequence),
     entry.startTime.toFixed(3),
     entry.endTime.toFixed(3),
@@ -233,7 +264,7 @@ export function exportWordToMouthCsv(report: WordMouthReportEntry[]): string {
 
 /**
  * Serializes Detailed Cue Timings to CSV string with schema:
- * cue_index,start_time_s,end_time_s,duration_ms,mouth_shape,associated_word,alignment_source
+ * cue_index,start_time_s,end_time_s,duration_ms,mouth_shape,phoneme,ipa,associated_word,alignment_source
  */
 export function exportDetailedCuesCsv(cuesReport: DetailedCueEntry[]): string {
   const headers = [
@@ -242,6 +273,8 @@ export function exportDetailedCuesCsv(cuesReport: DetailedCueEntry[]): string {
     'end_time_s',
     'duration_ms',
     'mouth_shape',
+    'phoneme',
+    'ipa',
     'associated_word',
     'alignment_source',
   ];
@@ -252,6 +285,8 @@ export function exportDetailedCuesCsv(cuesReport: DetailedCueEntry[]): string {
     entry.endTime.toFixed(3),
     entry.durationMs,
     escapeCsv(entry.mouthShape),
+    escapeCsv(entry.phoneme || ''),
+    escapeCsv(entry.ipa || ''),
     escapeCsv(entry.associatedWord),
     escapeCsv(entry.alignmentSource),
   ]);

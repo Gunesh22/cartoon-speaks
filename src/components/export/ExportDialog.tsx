@@ -7,6 +7,8 @@ import { Character } from '../../types/character';
 import { MouthAsset } from '../../types/mouth';
 import { AnimationTimeline } from '../../types/timeline';
 import { useVideoExport } from '../../hooks/useVideoExport';
+import { audioRepository } from '../../services/storage/audioRepository';
+import { projectRepository } from '../../services/storage/projectRepository';
 import { Button } from '../common/Button';
 import { Video } from 'lucide-react';
 
@@ -37,10 +39,27 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
 }) => {
   const { progress, startExport, cancelExport, resetExport } = useVideoExport();
   const [downloadBlob, setDownloadBlob] = useState<Blob | null>(null);
+  const [resolvedAudioBlob, setResolvedAudioBlob] = useState<Blob | null>(audioBlob || null);
+
+  React.useEffect(() => {
+    if (audioBlob) {
+      setResolvedAudioBlob(audioBlob);
+    } else if (timeline.projectId) {
+      projectRepository.getById(timeline.projectId).then(async (proj) => {
+        if (proj?.audioAssetId) {
+          const asset = await audioRepository.getAudioById(proj.audioAssetId);
+          if (asset?.blob) {
+            setResolvedAudioBlob(asset.blob);
+          }
+        }
+      });
+    }
+  }, [audioBlob, timeline.projectId]);
 
   const isExporting = progress.status === 'rendering' || progress.status === 'muxing';
 
   const handleStart = async () => {
+    const effectiveAudioBlob = resolvedAudioBlob || audioBlob;
     const blob = await startExport({
       exportSettings,
       character,
@@ -48,7 +67,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
       mouthAssets,
       timeline,
       bgImage,
-      audioBlob,
+      audioBlob: effectiveAudioBlob,
     });
     if (blob) {
       setDownloadBlob(blob);

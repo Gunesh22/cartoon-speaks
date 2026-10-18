@@ -63,7 +63,7 @@ describe('Lip-Sync Articulation & Timing Report Exporter', () => {
 
     const lines = csv.replace('\uFEFF', '').split('\r\n');
     expect(lines[0]).toBe(
-      'word_index,spoken_text,shape_sequence,start_time_s,end_time_s,total_duration_ms,shape_count,shapes_detail,alignment_source'
+      'word_index,spoken_text,inferred_phonemes,ipa,shape_sequence,start_time_s,end_time_s,total_duration_ms,shape_count,shapes_detail,alignment_source'
     );
 
     // Verify row for "Happy"
@@ -100,7 +100,7 @@ describe('Lip-Sync Articulation & Timing Report Exporter', () => {
     expect(csv.startsWith('\uFEFF')).toBe(true);
     const lines = csv.replace('\uFEFF', '').split('\r\n');
     expect(lines[0]).toBe(
-      'cue_index,start_time_s,end_time_s,duration_ms,mouth_shape,associated_word,alignment_source'
+      'cue_index,start_time_s,end_time_s,duration_ms,mouth_shape,phoneme,ipa,associated_word,alignment_source'
     );
 
     expect(lines.length).toBe(sampleCues.length + 1); // Header + cues

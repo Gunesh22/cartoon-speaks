@@ -121,67 +121,72 @@ export const ExportSettingsComponent: React.FC<ExportSettingsProps> = ({
         </div>
       </div>
 
-      {/* Audio Track Option */}
-      <div>
-        <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
-          3. Audio Track
-        </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Include Audio */}
-          <div
-            onClick={() => onChange({ ...settings, includeAudio: true })}
-            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
-              settings.includeAudio
-                ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20'
-                : 'border-slate-200 bg-white hover:border-slate-300'
-            }`}
-          >
-            <div
-              className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                settings.includeAudio ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'
-              }`}
-            >
-              {settings.includeAudio && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-            </div>
+        {/* Audio Track Option */}
+        {(() => {
+          const isAudioIncluded = settings.includeAudio !== false;
+          return (
             <div>
-              <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                <Volume2 className="w-4 h-4 text-indigo-600" />
-                Include Audio Track
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Exports video with speech & sound synchronized into the file.
-              </p>
-            </div>
-          </div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
+                3. Audio Track
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Include Audio */}
+                <div
+                  onClick={() => onChange({ ...settings, includeAudio: true })}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                    isAudioIncluded
+                      ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                      isAudioIncluded ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'
+                    }`}
+                  >
+                    {isAudioIncluded && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                      <Volume2 className="w-4 h-4 text-indigo-600" />
+                      Include Audio Track
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Exports video with speech & sound synchronized into the file.
+                    </p>
+                  </div>
+                </div>
 
-          {/* Video Only */}
-          <div
-            onClick={() => onChange({ ...settings, includeAudio: false })}
-            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
-              !settings.includeAudio
-                ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20'
-                : 'border-slate-200 bg-white hover:border-slate-300'
-            }`}
-          >
-            <div
-              className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                !settings.includeAudio ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'
-              }`}
-            >
-              {!settings.includeAudio && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-            </div>
-            <div>
-              <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                <VolumeX className="w-4 h-4 text-slate-500" />
-                Video Only (Muted)
+                {/* Video Only */}
+                <div
+                  onClick={() => onChange({ ...settings, includeAudio: false })}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                    !isAudioIncluded
+                      ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                      !isAudioIncluded ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'
+                    }`}
+                  >
+                    {!isAudioIncluded && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                      <VolumeX className="w-4 h-4 text-slate-500" />
+                      Video Only (Muted)
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Exports pure visual animation without any audio track.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Exports pure visual animation without any audio track.
-              </p>
             </div>
-          </div>
-        </div>
-      </div>
+          );
+        })()}
 
       {/* Frame Rate & Composition Details */}
       <div className="grid grid-cols-2 gap-4 pt-1">

@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   extractWordVisemes,
+  getWordArticulation,
   buildSpeechTimelineCues,
   smoothAndFilterCues,
   validateTimelineCues,
+  condenseVisemes,
 } from './phoneticAligner';
 
 describe('Phonetic Aligner & Natural Lip-Sync Engine', () => {
@@ -129,7 +131,7 @@ describe('Phonetic Aligner & Natural Lip-Sync Engine', () => {
     expect(mananFirstCue).toBeDefined();
     expect(mananFirstCue?.shape).toBe('A'); // Bilabial /m/ closure
     expect(mananFirstCue?.text).toBe('Manan');
-    expect(mananFirstCue?.source).toBe('heuristic');
+    expect(['dictionary', 'phoneme-rule']).toContain(mananFirstCue?.source);
   });
 
   it('adjusts mouth cue density and count according to minDurationMs and speed tuning', () => {
@@ -168,5 +170,116 @@ describe('Phonetic Aligner & Natural Lip-Sync Engine', () => {
         expect(cue.end - cue.start).toBeGreaterThanOrEqual(0.16);
       }
     }
+  });
+
+  it('correctly maps Hindi and Hinglish articulatory visemes and preserves sound order', () => {
+    // 1. "aap" opens on 'D' (aa) and closes on 'A' (p) - NEVER closed lips for the whole word!
+    const aapVisemes = extractWordVisemes('aap');
+    expect(aapVisemes.length).toBeGreaterThanOrEqual(2);
+    expect(aapVisemes[0].shape).toBe('D');
+    expect(aapVisemes[1].shape).toBe('A');
+
+    // 2. "Happy" has open vowel 'D' and closure 'A' in chronological order
+    const happyVisemes = extractWordVisemes('Happy');
+    const happyShapes = happyVisemes.map((v) => v.shape);
+    expect(happyShapes).toContain('D');
+    expect(happyShapes).toContain('A');
+    expect(happyShapes.indexOf('D')).toBeLessThan(happyShapes.indexOf('A'));
+
+    // 3. "Thoughts" has 'H' (th), 'E' (rounded open), and 'B' (ts teeth)
+    const thoughtsVisemes = extractWordVisemes('Thoughts');
+    const thoughtsShapes = thoughtsVisemes.map((v) => v.shape);
+    expect(thoughtsShapes).toEqual(['H', 'E', 'B']);
+
+    // 4. "sabhi" articulates 'B' (s) -> 'D' (a) -> 'A' (bh closure) -> 'C' (i smile)
+    const sabhiVisemes = extractWordVisemes('sabhi');
+    const sabhiShapes = sabhiVisemes.map((v) => v.shape);
+    expect(sabhiShapes).toEqual(['B', 'D', 'A', 'C']);
+
+    // 5. "swagat" articulates 'B' (s) -> 'O' (w pursed) -> 'D' (aa open) -> 'C' (g) -> 'B' (t)
+    const swagatVisemes = extractWordVisemes('swagat');
+    const swagatShapes = swagatVisemes.map((v) => v.shape);
+    expect(swagatShapes).toContain('B');
+    expect(swagatShapes).toContain('O');
+    expect(swagatShapes).toContain('D');
+    expect(swagatShapes.indexOf('O')).toBeLessThan(swagatShapes.indexOf('D'));
+
+    // 6. "Namaste" contains dental 'B' (n), bilabial closure 'A' (m), open vowel 'D' (a), dental 'B' (st), smile 'C' (e)
+    const namasteVisemes = extractWordVisemes('Namaste');
+    const namasteShapes = namasteVisemes.map((v) => v.shape);
+    expect(namasteShapes).toContain('B');
+    expect(namasteShapes).toContain('A');
+    expect(namasteShapes).toContain('D');
+    expect(namasteShapes).toContain('C');
+
+    // 7. "khushi" contains 'C' (kh), 'O' (u pursed), 'G' (sh smile teeth), 'C' (i smile)
+    const khushiVisemes = extractWordVisemes('khushi');
+    const khushiShapes = khushiVisemes.map((v) => v.shape);
+    expect(khushiShapes).toEqual(['C', 'O', 'G', 'C']);
+
+    // 8. "khoobsurat" articulates 'C' (kh) -> 'O' (oo) -> 'A' (b closure) -> 'B' (s) -> 'O' (u) -> 'B' (rat)
+    const khoobsuratVisemes = extractWordVisemes('khoobsurat');
+    const khoobsuratShapes = khoobsuratVisemes.map((v) => v.shape);
+    expect(khoobsuratShapes).toContain('O');
+    expect(khoobsuratShapes).toContain('A');
+    expect(khoobsuratShapes).toContain('B');
+  });
+
+  it('preserves chronological sound order and vowel nuclei when condensing visemes', () => {
+    // Word "aap": when condensed to 2 shapes, it MUST be D then A, NOT A then D!
+    const aapCondensed = condenseVisemes(extractWordVisemes('aap'), 2);
+    expect(aapCondensed[0].shape).toBe('D');
+    expect(aapCondensed[1].shape).toBe('A');
+
+    // Word "Happy": when condensed to 1 shape, it must choose the vowel nucleus 'D', NOT a closed mouth 'A'!
+    const happySingle = condenseVisemes(extractWordVisemes('Happy'), 1);
+    expect(happySingle[0].shape).toBe('D');
+
+    // Word "sabhi": when condensed to 3 shapes, maintains forward order B -> D -> A or B -> A -> C
+    const sabhiCondensed = condenseVisemes(extractWordVisemes('sabhi'), 3);
+    const sabhiShapes = sabhiCondensed.map((v) => v.shape);
+    expect(sabhiShapes.indexOf('A')).toBeGreaterThan(0); // Closure 'A' (/bh/) is in middle/end, never beginning!
+  });
+
+  it('articulates all 13 benchmark words with correct phonemes, sources, and shapes', () => {
+    const benchmarkWords = [
+      'Namaste', 'Happy', 'Thoughts', 'ki', 'taraf', 'aap',
+      'sabhi', 'Manan', 'Ashram', 'hardik', 'swagat', 'aaiye', 'dhanyavaad'
+    ];
+
+    for (const w of benchmarkWords) {
+      const art = getWordArticulation(w);
+      expect(art.visemes.length).toBeGreaterThan(0);
+      expect(art.source).toBe('dictionary');
+      expect(art.phonemes.length).toBeGreaterThan(0);
+      expect(art.ipa.length).toBeGreaterThan(0);
+    }
+
+    // 1. Namaste: B (n) -> C (a) -> A (m closure) -> D (a open) -> B (st dental) -> C (e front)
+    expect(extractWordVisemes('Namaste').map((v) => v.shape)).toEqual(['B', 'C', 'A', 'D', 'B', 'C']);
+    // 2. Happy: C (h) -> D (ae open) -> A (p closure) -> C (i smile)
+    expect(extractWordVisemes('Happy').map((v) => v.shape)).toEqual(['C', 'D', 'A', 'C']);
+    // 3. Thoughts: H (th tongue) -> E (aw rounded) -> B (ts dental)
+    expect(extractWordVisemes('Thoughts').map((v) => v.shape)).toEqual(['H', 'E', 'B']);
+    // 4. ki: C (k + i coarticulated)
+    expect(extractWordVisemes('ki').map((v) => v.shape)).toEqual(['C']);
+    // 5. taraf: B (t) -> D (a) -> B (r) -> F (f teeth on lip)
+    expect(extractWordVisemes('taraf').map((v) => v.shape)).toEqual(['B', 'D', 'B', 'F']);
+    // 6. aap: D (aa open) -> A (p closure)
+    expect(extractWordVisemes('aap').map((v) => v.shape)).toEqual(['D', 'A']);
+    // 7. sabhi: B (s) -> D (a) -> A (bh closure) -> C (i smile)
+    expect(extractWordVisemes('sabhi').map((v) => v.shape)).toEqual(['B', 'D', 'A', 'C']);
+    // 8. Manan: A (m) -> D (a) -> B (n) -> D (a) -> B (n)
+    expect(extractWordVisemes('Manan').map((v) => v.shape)).toEqual(['A', 'D', 'B', 'D', 'B']);
+    // 9. Ashram: D (aa) -> G (sh smile teeth) -> B (r) -> D (a) -> A (m closure)
+    expect(extractWordVisemes('Ashram').map((v) => v.shape)).toEqual(['D', 'G', 'B', 'D', 'A']);
+    // 10. hardik: C (h) -> D (aa) -> B (rd) -> C (ik)
+    expect(extractWordVisemes('hardik').map((v) => v.shape)).toEqual(['C', 'D', 'B', 'C']);
+    // 11. swagat: B (s) -> O (w pursed) -> D (aa open) -> C (g) -> B (t)
+    expect(extractWordVisemes('swagat').map((v) => v.shape)).toEqual(['B', 'O', 'D', 'C', 'B']);
+    // 12. aaiye: D (aa open) -> C (iye smile)
+    expect(extractWordVisemes('aaiye').map((v) => v.shape)).toEqual(['D', 'C']);
+    // 13. dhanyavaad: B (dh) -> D (a) -> B (ny) -> F (v teeth on lip) -> D (aa open) -> B (d)
+    expect(extractWordVisemes('dhanyavaad').map((v) => v.shape)).toEqual(['B', 'D', 'B', 'F', 'D', 'B']);
   });
 });

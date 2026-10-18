@@ -14,7 +14,8 @@ export function createVideoMuxer(
   height: number,
   hasAudio: boolean,
   sampleRate: number = 44100,
-  numberOfChannels: number = 2
+  numberOfChannels: number = 2,
+  videoCodec: string = 'vp9'
 ): MuxerWrapper {
   if (format === 'mp4') {
     const target = new Mp4ArrayBufferTarget();
@@ -40,8 +41,21 @@ export function createVideoMuxer(
         muxer.addVideoChunk(chunk, meta);
       },
       addAudioChunk(chunk, meta) {
-        if (hasAudio && muxer.addAudioChunk) {
-          muxer.addAudioChunk(chunk, meta);
+        if (hasAudio) {
+          const rawDuration = chunk.duration;
+          // AAC standard frame size is 1024 samples per frame: duration in micros = (1024 / sampleRate) * 1_000_000
+          const fallbackDuration = Math.round((1024 / sampleRate) * 1_000_000);
+          const duration =
+            rawDuration !== null &&
+            rawDuration !== undefined &&
+            Number.isFinite(rawDuration) &&
+            rawDuration > 0
+              ? rawDuration
+              : fallbackDuration;
+
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+          muxer.addAudioChunkRaw(data, chunk.type, chunk.timestamp, duration, meta);
         }
       },
       finalize() {
@@ -52,11 +66,11 @@ export function createVideoMuxer(
   } else {
     // webm or webm-alpha
     const target = new WebmArrayBufferTarget();
-    const isVp9 = true;
+    const isVp8 = videoCodec.toLowerCase().includes('vp8');
     const muxer = new WebmMuxer({
       target,
       video: {
-        codec: isVp9 ? 'V_VP9' : 'V_VP8',
+        codec: isVp8 ? 'V_VP8' : 'V_VP9',
         width,
         height,
         alpha: format === 'webm-alpha',
@@ -75,8 +89,10 @@ export function createVideoMuxer(
         muxer.addVideoChunk(chunk, meta);
       },
       addAudioChunk(chunk, meta) {
-        if (hasAudio && muxer.addAudioChunk) {
-          muxer.addAudioChunk(chunk, meta);
+        if (hasAudio) {
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+          muxer.addAudioChunkRaw(data, chunk.type, chunk.timestamp, meta);
         }
       },
       finalize() {

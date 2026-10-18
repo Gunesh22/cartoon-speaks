@@ -168,18 +168,32 @@ export const LipSyncReportModal: React.FC<LipSyncReportModalProps> = ({
   };
 
   const renderSourceBadge = (source: string) => {
-    const color =
-      source === 'rhubarb'
-        ? 'bg-purple-50 text-purple-700 border-purple-200'
-        : source === 'manual'
-        ? 'bg-blue-50 text-blue-700 border-blue-200'
-        : source === 'heuristic'
-        ? 'bg-amber-50 text-amber-700 border-amber-200'
-        : 'bg-slate-50 text-slate-500 border-slate-200';
+    let color = 'bg-slate-50 text-slate-500 border-slate-200';
+    let label = source;
+
+    if (source === 'dictionary') {
+      color = 'bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold';
+      label = 'Dictionary';
+    } else if (source === 'phoneme-rule') {
+      color = 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold';
+      label = 'Phoneme Rule';
+    } else if (source === 'rhubarb') {
+      color = 'bg-purple-50 text-purple-700 border-purple-200 font-semibold';
+      label = 'Rhubarb';
+    } else if (source === 'manual') {
+      color = 'bg-sky-50 text-sky-700 border-sky-200 font-semibold';
+      label = 'Manual';
+    } else if (source === 'heuristic-fallback') {
+      color = 'bg-amber-50 text-amber-700 border-amber-200 font-semibold';
+      label = 'Fallback';
+    } else if (source === 'heuristic') {
+      color = 'bg-amber-50 text-amber-700 border-amber-200 font-semibold';
+      label = 'Heuristic';
+    }
 
     return (
-      <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded border uppercase tracking-wider ${color}`}>
-        {source}
+      <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded border uppercase tracking-wider ${color}`}>
+        {label}
       </span>
     );
   };
@@ -313,6 +327,7 @@ export const LipSyncReportModal: React.FC<LipSyncReportModalProps> = ({
                 <tr>
                   <th className="py-2 px-3 w-10 text-center">#</th>
                   <th className="py-2 px-3">Spoken Word</th>
+                  <th className="py-2 px-3">Inferred Phonemes</th>
                   <th className="py-2 px-3">Mouth Shapes Sequence</th>
                   <th className="py-2 px-3">Start (s)</th>
                   <th className="py-2 px-3">End (s)</th>
@@ -325,7 +340,7 @@ export const LipSyncReportModal: React.FC<LipSyncReportModalProps> = ({
               <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
                 {filteredWordReport.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-slate-400 font-sans">
+                    <td colSpan={10} className="py-8 text-center text-slate-400 font-sans">
                       No word-to-mouth cues matched your search.
                     </td>
                   </tr>
@@ -340,6 +355,16 @@ export const LipSyncReportModal: React.FC<LipSyncReportModalProps> = ({
                       </td>
                       <td className="py-2 px-3 font-semibold text-slate-900 font-sans">
                         {row.spokenText}
+                      </td>
+                      <td className="py-2 px-3 text-[10px] text-slate-600 font-sans">
+                        {row.phonemes ? (
+                          <div className="flex flex-col">
+                            <span className="font-mono text-indigo-700 font-medium">{row.phonemes}</span>
+                            {row.ipa && <span className="text-slate-400 font-serif">/{row.ipa}/</span>}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="py-2 px-3">
                         <div className="flex items-center gap-1 flex-wrap">
@@ -373,6 +398,7 @@ export const LipSyncReportModal: React.FC<LipSyncReportModalProps> = ({
                   <th className="py-2 px-3">End (s)</th>
                   <th className="py-2 px-3">Duration (ms)</th>
                   <th className="py-2 px-3">Mouth Shape</th>
+                  <th className="py-2 px-3">Phoneme / IPA</th>
                   <th className="py-2 px-3">Associated Word</th>
                   <th className="py-2 px-3">Alignment Source</th>
                 </tr>
@@ -380,7 +406,7 @@ export const LipSyncReportModal: React.FC<LipSyncReportModalProps> = ({
               <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
                 {filteredCuesReport.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-400 font-sans">
+                    <td colSpan={8} className="py-8 text-center text-slate-400 font-sans">
                       No timeline cues matched your search.
                     </td>
                   </tr>
@@ -397,6 +423,16 @@ export const LipSyncReportModal: React.FC<LipSyncReportModalProps> = ({
                       <td className="py-2 px-3 text-slate-600">{row.endTime.toFixed(3)}s</td>
                       <td className="py-2 px-3 font-medium text-slate-800">{row.durationMs}ms</td>
                       <td className="py-2 px-3">{renderShapeBadge(row.mouthShape)}</td>
+                      <td className="py-2 px-3 text-[10px] font-mono text-slate-600">
+                        {row.phoneme ? (
+                          <span>
+                            <span className="text-indigo-700">{row.phoneme}</span>{' '}
+                            {row.ipa && <span className="text-slate-400 font-serif">[{row.ipa}]</span>}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td className="py-2 px-3 font-semibold text-slate-900 font-sans">
                         {row.associatedWord}
                       </td>

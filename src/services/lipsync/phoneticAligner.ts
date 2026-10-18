@@ -1,10 +1,25 @@
-import { TimelineCue, CueWarning } from '../../types/timeline';
+import { TimelineCue, CueWarning, CueAlignmentSource } from '../../types/timeline';
 import { generateId } from '../../utils/ids';
 import { LipSyncTuningSettings } from '../../types/timeline';
+import { phonemizeWord } from './phonemizer';
+import { phonemesToVisemes } from './phonemeVisemeMap';
 
 export interface PhonemeViseme {
   shape: string; // Rhubarb shapes: X, A, B, C, D, E, F, G, H, O
   weight: number; // Proportion of the word duration (0.0 to 1.0)
+  phoneme?: string;
+  ipa?: string;
+  source?: CueAlignmentSource;
+}
+
+export interface WordArticulation {
+  word: string;
+  cleanWord: string;
+  language: string;
+  source: CueAlignmentSource;
+  phonemes: string;
+  ipa: string;
+  visemes: PhonemeViseme[];
 }
 
 /**
@@ -23,7 +38,7 @@ export interface PhonemeViseme {
  * - O: Small rounded / pursed opening (W, Q, OO, U).
  * - X: Rest / Neutral idle shape (Silence, pause).
  */
-const COMMON_WORD_VISEMES: Record<string, PhonemeViseme[]> = {
+export const COMMON_WORD_VISEMES: Record<string, PhonemeViseme[]> = {
   // Common conversational English
   hi: [
     { shape: 'D', weight: 0.60 }, // Open vowel /aɪ/
@@ -155,9 +170,9 @@ const COMMON_WORD_VISEMES: Record<string, PhonemeViseme[]> = {
     { shape: 'B', weight: 0.20 },
   ],
 
-  // Specific phrases & Indian/South Asian vocabulary
+  // Specific phrases & Indian / Hinglish / English vocabulary
   happy: [
-    { shape: 'B', weight: 0.15 }, // H onset
+    { shape: 'C', weight: 0.15 }, // H onset aspirate
     { shape: 'D', weight: 0.35 }, // Open vowel /æ/
     { shape: 'A', weight: 0.25 }, // Closed lips /p/ (bilabial)
     { shape: 'C', weight: 0.25 }, // Smiling off-glide /i/
@@ -165,7 +180,7 @@ const COMMON_WORD_VISEMES: Record<string, PhonemeViseme[]> = {
   thoughts: [
     { shape: 'H', weight: 0.25 }, // Tongue behind teeth /θ/
     { shape: 'E', weight: 0.45 }, // Open rounded /ɔː/
-    { shape: 'B', weight: 0.30 }, // Sibilant /ts/
+    { shape: 'B', weight: 0.30 }, // Sibilant /ts/ (teeth together)
   ],
   thought: [
     { shape: 'H', weight: 0.30 },
@@ -173,27 +188,30 @@ const COMMON_WORD_VISEMES: Record<string, PhonemeViseme[]> = {
     { shape: 'B', weight: 0.20 },
   ],
   manan: [
-    { shape: 'A', weight: 0.20 }, // M (closed lips)
+    { shape: 'A', weight: 0.25 }, // M (closed lips)
     { shape: 'D', weight: 0.30 }, // Open vowel /ʌ/
     { shape: 'B', weight: 0.20 }, // N dental
-    { shape: 'D', weight: 0.20 }, // Open vowel /ʌ/
+    { shape: 'D', weight: 0.15 }, // Open vowel /ʌ/
     { shape: 'B', weight: 0.10 }, // N closure
   ],
   ashram: [
-    { shape: 'D', weight: 0.25 }, // Open vowel /ɑː/
+    { shape: 'D', weight: 0.30 }, // Open vowel /ɑː/
     { shape: 'G', weight: 0.25 }, // SH sibilant (teeth smile)
-    { shape: 'C', weight: 0.15 }, // R liquid
-    { shape: 'D', weight: 0.15 }, // A vowel
-    { shape: 'A', weight: 0.20 }, // M (closed lips)
+    { shape: 'C', weight: 0.15 }, // R liquid / A vowel
+    { shape: 'A', weight: 0.30 }, // M (closed lips!)
   ],
   par: [
-    { shape: 'A', weight: 0.30 }, // P (closed lips)
+    { shape: 'A', weight: 0.30 }, // P (closed lips!)
     { shape: 'D', weight: 0.45 }, // A open vowel
-    { shape: 'B', weight: 0.25 }, // R dental/flap
+    { shape: 'B', weight: 0.25 }, // R dental flap
+  ],
+  aap: [
+    { shape: 'D', weight: 0.60 }, // AA open wide vowel
+    { shape: 'A', weight: 0.40 }, // P bilabial stop (lips closed!)
   ],
   aapka: [
     { shape: 'D', weight: 0.35 }, // AA long open vowel
-    { shape: 'A', weight: 0.25 }, // P (closed lips)
+    { shape: 'A', weight: 0.25 }, // P (closed lips!)
     { shape: 'C', weight: 0.15 }, // K velar
     { shape: 'D', weight: 0.25 }, // A vowel
   ],
@@ -203,36 +221,186 @@ const COMMON_WORD_VISEMES: Record<string, PhonemeViseme[]> = {
     { shape: 'C', weight: 0.15 },
     { shape: 'D', weight: 0.25 },
   ],
+  sabhi: [
+    { shape: 'B', weight: 0.20 }, // Dental sibilant /s/
+    { shape: 'D', weight: 0.30 }, // Open vowel /ʌ/
+    { shape: 'A', weight: 0.25 }, // Aspirated bilabial /bʱ/ (lips closed!)
+    { shape: 'C', weight: 0.25 }, // Close front vowel /iː/ (smile)
+  ],
   swagat: [
     { shape: 'B', weight: 0.15 }, // S dental
-    { shape: 'O', weight: 0.20 }, // W rounded lips
-    { shape: 'D', weight: 0.30 }, // A open vowel
-    { shape: 'C', weight: 0.15 }, // G velar
-    { shape: 'B', weight: 0.20 }, // T dental stop
+    { shape: 'O', weight: 0.20 }, // W rounded / pursed lips
+    { shape: 'D', weight: 0.35 }, // AA open wide vowel
+    { shape: 'C', weight: 0.15 }, // G velar stop
+    { shape: 'B', weight: 0.15 }, // T dental stop
+  ],
+  namaste: [
+    { shape: 'B', weight: 0.15 }, // N dental
+    { shape: 'C', weight: 0.15 }, // A short vowel
+    { shape: 'A', weight: 0.20 }, // M bilabial stop (lips firmly closed!)
+    { shape: 'D', weight: 0.20 }, // A open vowel
+    { shape: 'B', weight: 0.15 }, // ST dental cluster (teeth showing)
+    { shape: 'C', weight: 0.15 }, // E front vowel (smile)
+  ],
+  khushi: [
+    { shape: 'C', weight: 0.20 }, // KH aspirated velar
+    { shape: 'O', weight: 0.35 }, // U rounded pursed vowel
+    { shape: 'G', weight: 0.25 }, // SH sibilant (teeth smile)
+    { shape: 'C', weight: 0.20 }, // I close front vowel (smile)
+  ],
+  khoobsurat: [
+    { shape: 'C', weight: 0.14 }, // KH velar
+    { shape: 'O', weight: 0.24 }, // OO rounded vowel
+    { shape: 'A', weight: 0.20 }, // B bilabial stop (lips closed!)
+    { shape: 'B', weight: 0.14 }, // S dental sibilant
+    { shape: 'O', weight: 0.14 }, // U rounded vowel
+    { shape: 'B', weight: 0.14 }, // RAT dental stop
+  ],
+  khubsurat: [
+    { shape: 'C', weight: 0.14 },
+    { shape: 'O', weight: 0.24 },
+    { shape: 'A', weight: 0.20 },
+    { shape: 'B', weight: 0.14 },
+    { shape: 'O', weight: 0.14 },
+    { shape: 'B', weight: 0.14 },
+  ],
+  ek: [
+    { shape: 'C', weight: 0.60 }, // E front vowel
+    { shape: 'B', weight: 0.40 }, // K stop
+  ],
+  aaiye: [
+    { shape: 'D', weight: 0.55 }, // AA open vowel
+    { shape: 'C', weight: 0.45 }, // IYE front glide / smile
   ],
   hai: [
     { shape: 'C', weight: 0.25 }, // H aspirate
-    { shape: 'D', weight: 0.45 }, // AI open
+    { shape: 'D', weight: 0.45 }, // AI open vowel
     { shape: 'C', weight: 0.30 }, // Off-glide
+  ],
+  hain: [
+    { shape: 'C', weight: 0.20 },
+    { shape: 'D', weight: 0.45 },
+    { shape: 'B', weight: 0.35 },
   ],
   ho: [
     { shape: 'C', weight: 0.25 },
     { shape: 'E', weight: 0.75 },
   ],
-  namaste: [
-    { shape: 'B', weight: 0.15 }, // N
-    { shape: 'D', weight: 0.25 }, // A
-    { shape: 'A', weight: 0.20 }, // M (closed lips)
-    { shape: 'D', weight: 0.20 }, // A
-    { shape: 'B', weight: 0.10 }, // S/T
-    { shape: 'C', weight: 0.10 }, // E
+  hoga: [
+    { shape: 'C', weight: 0.20 },
+    { shape: 'E', weight: 0.40 },
+    { shape: 'C', weight: 0.20 },
+    { shape: 'D', weight: 0.20 },
+  ],
+  hogi: [
+    { shape: 'C', weight: 0.20 },
+    { shape: 'E', weight: 0.40 },
+    { shape: 'C', weight: 0.20 },
+    { shape: 'C', weight: 0.20 },
+  ],
+  bhi: [
+    { shape: 'A', weight: 0.40 }, // BH bilabial closure (lips closed!)
+    { shape: 'C', weight: 0.60 }, // I smile vowel
+  ],
+  bahut: [
+    { shape: 'A', weight: 0.25 }, // B bilabial closure
+    { shape: 'D', weight: 0.25 }, // A vowel
+    { shape: 'O', weight: 0.30 }, // U rounded vowel
+    { shape: 'B', weight: 0.20 }, // T dental stop
+  ],
+  accha: [
+    { shape: 'D', weight: 0.35 }, // A open vowel
+    { shape: 'G', weight: 0.35 }, // CCH sibilant smile
+    { shape: 'D', weight: 0.30 }, // A open vowel
+  ],
+  achha: [
+    { shape: 'D', weight: 0.35 },
+    { shape: 'G', weight: 0.35 },
+    { shape: 'D', weight: 0.30 },
+  ],
+  shukriya: [
+    { shape: 'G', weight: 0.25 }, // SH sibilant smile
+    { shape: 'O', weight: 0.30 }, // U rounded vowel
+    { shape: 'C', weight: 0.20 }, // K velar
+    { shape: 'D', weight: 0.25 }, // YA open vowel
   ],
   dhanyavad: [
-    { shape: 'H', weight: 0.20 }, // DH
-    { shape: 'D', weight: 0.25 }, // A
-    { shape: 'B', weight: 0.15 }, // N
-    { shape: 'F', weight: 0.20 }, // V (teeth on lip)
-    { shape: 'D', weight: 0.20 }, // D
+    { shape: 'B', weight: 0.20 }, // DH dental stop
+    { shape: 'D', weight: 0.25 }, // A open vowel
+    { shape: 'B', weight: 0.15 }, // N dental nasal
+    { shape: 'F', weight: 0.20 }, // V labiodental (teeth on lip)
+    { shape: 'D', weight: 0.20 }, // D dental stop
+  ],
+  alvida: [
+    { shape: 'D', weight: 0.20 }, // A open
+    { shape: 'H', weight: 0.15 }, // L tongue
+    { shape: 'F', weight: 0.25 }, // V teeth on lip
+    { shape: 'C', weight: 0.20 }, // I smile
+    { shape: 'D', weight: 0.20 }, // DA dental open
+  ],
+  aur: [
+    { shape: 'E', weight: 0.65 }, // AU rounded open
+    { shape: 'B', weight: 0.35 }, // R dental flap
+  ],
+  kya: [
+    { shape: 'C', weight: 0.30 }, // K velar
+    { shape: 'D', weight: 0.70 }, // YA open vowel
+  ],
+  kyun: [
+    { shape: 'C', weight: 0.25 },
+    { shape: 'E', weight: 0.50 },
+    { shape: 'B', weight: 0.25 },
+  ],
+  kyon: [
+    { shape: 'C', weight: 0.25 },
+    { shape: 'E', weight: 0.50 },
+    { shape: 'B', weight: 0.25 },
+  ],
+  kaise: [
+    { shape: 'C', weight: 0.25 },
+    { shape: 'D', weight: 0.35 },
+    { shape: 'B', weight: 0.20 },
+    { shape: 'C', weight: 0.20 },
+  ],
+  hum: [
+    { shape: 'C', weight: 0.25 },
+    { shape: 'D', weight: 0.40 },
+    { shape: 'A', weight: 0.35 }, // M closure (lips closed!)
+  ],
+  tum: [
+    { shape: 'B', weight: 0.25 },
+    { shape: 'O', weight: 0.40 },
+    { shape: 'A', weight: 0.35 }, // M closure (lips closed!)
+  ],
+  mera: [
+    { shape: 'A', weight: 0.25 }, // M closure
+    { shape: 'C', weight: 0.35 },
+    { shape: 'B', weight: 0.15 },
+    { shape: 'D', weight: 0.25 },
+  ],
+  meri: [
+    { shape: 'A', weight: 0.25 },
+    { shape: 'C', weight: 0.35 },
+    { shape: 'B', weight: 0.15 },
+    { shape: 'C', weight: 0.25 },
+  ],
+  shanti: [
+    { shape: 'G', weight: 0.25 },
+    { shape: 'D', weight: 0.35 },
+    { shape: 'B', weight: 0.25 },
+    { shape: 'C', weight: 0.15 },
+  ],
+  baat: [
+    { shape: 'A', weight: 0.30 }, // B closure
+    { shape: 'D', weight: 0.45 }, // AA open
+    { shape: 'B', weight: 0.25 }, // T dental
+  ],
+  zindagi: [
+    { shape: 'B', weight: 0.20 },
+    { shape: 'C', weight: 0.25 },
+    { shape: 'B', weight: 0.20 },
+    { shape: 'C', weight: 0.15 },
+    { shape: 'C', weight: 0.20 },
   ],
 };
 
@@ -249,182 +417,49 @@ const COMMON_WORD_VISEMES: Record<string, PhonemeViseme[]> = {
  * - Smile vowels (EE, I, E, Y) open in a relaxed smile ('C').
  * - Rounded open vowels (O, AO, AW) open with rounded lips ('E').
  */
+/**
+ * Articulates a spoken word through the multi-dialect phonemizer and centralized viseme map.
+ * Returns inferred phoneme tokens, IPA string, alignment source (dictionary vs phoneme-rule),
+ * and the sequence of visemes.
+ */
+export function getWordArticulation(rawWord: string): WordArticulation {
+  const cleanWord = rawWord.toLowerCase().replace(/[^a-z]/g, '');
+  if (!cleanWord) {
+    return {
+      word: rawWord,
+      cleanWord: '',
+      language: 'english',
+      source: 'heuristic-fallback',
+      phonemes: 'pause',
+      ipa: 'x',
+      visemes: [{ shape: 'X', weight: 1.0, source: 'heuristic-fallback' }],
+    };
+  }
+
+  const pronunciation = phonemizeWord(rawWord);
+  const mapped = phonemesToVisemes(pronunciation.phonemes);
+  const phonemeTokens = pronunciation.phonemes.map((p) => p.phoneme).join('-');
+  const ipaStr = pronunciation.phonemes.map((p) => p.ipa).join('');
+
+  return {
+    word: rawWord,
+    cleanWord: pronunciation.cleanWord,
+    language: pronunciation.language,
+    source: pronunciation.source,
+    phonemes: phonemeTokens,
+    ipa: ipaStr,
+    visemes: mapped.map((m) => ({
+      shape: m.shape,
+      weight: m.weight,
+      phoneme: m.phoneme,
+      ipa: m.ipa,
+      source: pronunciation.source,
+    })),
+  };
+}
+
 export function extractWordVisemes(rawWord: string): PhonemeViseme[] {
-  const word = rawWord.toLowerCase().replace(/[^a-z]/g, '');
-  if (!word) return [{ shape: 'X', weight: 1.0 }];
-
-  // 1. Direct dictionary match
-  if (COMMON_WORD_VISEMES[word]) {
-    return COMMON_WORD_VISEMES[word];
-  }
-
-  // 2. Rule-based syllable and phoneme extraction
-  const visemes: PhonemeViseme[] = [];
-  let i = 0;
-  const len = word.length;
-
-  while (i < len) {
-    const ch = word[i];
-    const next = word[i + 1] || '';
-
-    // Silent final 'e' check (e.g. 'name', 'make', 'like', 'code')
-    if (ch === 'e' && i === len - 1 && i >= 2 && !'aeiou'.includes(word[i - 1])) {
-      i++;
-      continue;
-    }
-
-    // Bilabial consonants (M, P, B): lips closed together ('A')
-    if (ch === 'm' || ch === 'p' || ch === 'b') {
-      // If double consonant (e.g. 'pp', 'bb', 'mm'), advance past both
-      const skip = (next === ch) ? 2 : 1;
-      visemes.push({ shape: 'A', weight: 0.28 });
-      i += skip;
-      continue;
-    }
-
-    // Labiodental consonants (F, V, PH): upper teeth on lower lip ('F')
-    if (ch === 'f' || ch === 'v' || (ch === 'p' && next === 'h')) {
-      const skip = (ch === 'p' && next === 'h') ? 2 : (next === ch ? 2 : 1);
-      visemes.push({ shape: 'F', weight: 0.25 });
-      i += skip;
-      continue;
-    }
-
-    // Sibilants and affricates (SH, CH, J, ZH): smile with teeth showing ('G')
-    if (
-      (ch === 's' && next === 'h') ||
-      (ch === 'c' && next === 'h') ||
-      (ch === 'z' && next === 'h') ||
-      ch === 'j'
-    ) {
-      visemes.push({ shape: 'G', weight: 0.25 });
-      i += (ch === 'j') ? 1 : 2;
-      continue;
-    }
-
-    // Tongue behind teeth (TH, DH, L): tongue raised ('H')
-    if ((ch === 't' && next === 'h') || (ch === 'd' && next === 'h') || ch === 'l') {
-      const skip = (next === 'h') ? 2 : (next === 'l' ? 2 : 1);
-      visemes.push({ shape: 'H', weight: 0.22 });
-      i += skip;
-      continue;
-    }
-
-    // Glides & pursed rounded (W, WH, QU, U after consonant)
-    if (ch === 'w' || (ch === 'q' && next === 'u') || (ch === 'w' && next === 'h')) {
-      const skip = (ch === 'q' || next === 'h') ? 2 : 1;
-      visemes.push({ shape: 'O', weight: 0.25 });
-      i += skip;
-      continue;
-    }
-
-    // Long double vowels
-    if (ch === 'a' && next === 'a') {
-      visemes.push({ shape: 'D', weight: 0.55 });
-      i += 2;
-      continue;
-    }
-    if (ch === 'e' && next === 'e') {
-      visemes.push({ shape: 'C', weight: 0.50 });
-      i += 2;
-      continue;
-    }
-    if (ch === 'o' && next === 'o') {
-      visemes.push({ shape: 'O', weight: 0.50 });
-      i += 2;
-      continue;
-    }
-
-    // Diphthongs
-    if ((ch === 'a' && (next === 'i' || next === 'y')) || (ch === 'e' && next === 'i')) {
-      visemes.push({ shape: 'D', weight: 0.35 });
-      visemes.push({ shape: 'C', weight: 0.30 });
-      i += 2;
-      continue;
-    }
-    if (ch === 'a' && (next === 'u' || next === 'w')) {
-      visemes.push({ shape: 'D', weight: 0.35 });
-      visemes.push({ shape: 'O', weight: 0.30 });
-      i += 2;
-      continue;
-    }
-    if (ch === 'o' && (next === 'u' || next === 'w')) {
-      visemes.push({ shape: 'E', weight: 0.35 });
-      visemes.push({ shape: 'O', weight: 0.30 });
-      i += 2;
-      continue;
-    }
-    if (ch === 'o' && (next === 'i' || next === 'y')) {
-      visemes.push({ shape: 'E', weight: 0.35 });
-      visemes.push({ shape: 'C', weight: 0.30 });
-      i += 2;
-      continue;
-    }
-    if (ch === 'e' && (next === 'a' || next === 'y')) {
-      visemes.push({ shape: 'C', weight: 0.55 });
-      i += 2;
-      continue;
-    }
-
-    // Single vowels (syllable nucleus)
-    if (ch === 'a') {
-      visemes.push({ shape: 'D', weight: 0.45 });
-      i++;
-      continue;
-    }
-    if (ch === 'e' || ch === 'i' || ch === 'y') {
-      visemes.push({ shape: 'C', weight: 0.40 });
-      i++;
-      continue;
-    }
-    if (ch === 'o') {
-      visemes.push({ shape: 'E', weight: 0.45 });
-      i++;
-      continue;
-    }
-    if (ch === 'u') {
-      visemes.push({ shape: 'O', weight: 0.45 });
-      i++;
-      continue;
-    }
-
-    // Dental / Alveolar / Sibilant consonants (S, T, D, N, Z, R)
-    if (ch === 's' || ch === 't' || ch === 'd' || ch === 'z' || ch === 'n' || ch === 'r') {
-      const skip = (next === ch) ? 2 : 1;
-      visemes.push({ shape: 'B', weight: 0.22 });
-      i += skip;
-      continue;
-    }
-
-    // Velar stops & fricatives (K, G, C, Q, X, H)
-    visemes.push({ shape: 'C', weight: 0.20 });
-    i++;
-  }
-
-  if (visemes.length === 0) {
-    return [{ shape: 'C', weight: 1.0 }];
-  }
-
-  // Merge adjacent identical shapes within the word
-  const merged: PhonemeViseme[] = [];
-  for (const v of visemes) {
-    const prev = merged[merged.length - 1];
-    if (prev && prev.shape === v.shape) {
-      prev.weight += v.weight;
-    } else {
-      merged.push({ ...v });
-    }
-  }
-
-  // Normalize weights so they sum to 1.0
-  const totalWeight = merged.reduce((sum, v) => sum + v.weight, 0);
-  if (totalWeight > 0) {
-    for (const v of merged) {
-      v.weight /= totalWeight;
-    }
-  }
-
-  return merged;
+  return getWordArticulation(rawWord).visemes;
 }
 
 
@@ -462,64 +497,70 @@ export function getWordPhoneticWeight(rawWord: string): number {
 }
 
 /**
-/**
- * Condenses extracted visemes down to the maximum number that can fit into a word's duration
- * given minDurationMs and speed settings, preserving essential closures and primary vowels.
+ * Condenses extracted visemes down to the maximum number that can fit into a word's duration,
+ * strictly preserving chronological sound order (speech flow), visual closures, and vowel nuclei.
  */
 export function condenseVisemes(visemes: PhonemeViseme[], maxCount: number): PhonemeViseme[] {
   if (visemes.length <= maxCount || maxCount <= 0) return visemes;
 
   if (maxCount === 1) {
-    // Keep single most important articulatory shape
-    const closure = visemes.find((v) => v.shape === 'A' || v.shape === 'F');
-    if (closure) return [{ shape: closure.shape, weight: 1.0 }];
+    // Single shape for entire word: prioritize primary open/rounded vowel nucleus (D, O, E) first,
+    // so the mouth opens for vocalization rather than staying closed on a consonant
+    const openVowel = visemes.find((v) => v.shape === 'D' || v.shape === 'O' || v.shape === 'E');
+    if (openVowel) return [{ ...openVowel, weight: 1.0 }];
 
-    const vowel = visemes.find((v) => v.shape === 'D' || v.shape === 'O' || v.shape === 'E');
-    if (vowel) return [{ shape: vowel.shape, weight: 1.0 }];
-
-    const sorted = [...visemes].sort((a, b) => b.weight - a.weight);
-    return [{ shape: sorted[0].shape, weight: 1.0 }];
-  }
-
-  if (maxCount === 2) {
-    const closure = visemes.find((v) => v.shape === 'A' || v.shape === 'F');
-    const vowel = visemes.find((v) => v.shape === 'D' || v.shape === 'O' || v.shape === 'E') || visemes[visemes.length - 1];
-
-    if (closure && vowel && closure !== vowel) {
-      return [
-        { shape: closure.shape, weight: 0.35 },
-        { shape: vowel.shape, weight: 0.65 },
-      ];
+    const vowelCandidates = visemes.filter((v) => v.shape === 'D' || v.shape === 'O' || v.shape === 'E' || v.shape === 'C');
+    if (vowelCandidates.length > 0) {
+      const topVowel = [...vowelCandidates].sort((a, b) => b.weight - a.weight)[0];
+      return [{ ...topVowel, weight: 1.0 }];
     }
 
-    const first = visemes[0];
-    const second = visemes[1] || visemes[visemes.length - 1];
-    const totalW = first.weight + second.weight;
-    return [
-      { shape: first.shape, weight: first.weight / totalW },
-      { shape: second.shape, weight: second.weight / totalW },
-    ];
+    const sorted = [...visemes].sort((a, b) => b.weight - a.weight);
+    return [{ ...sorted[0], weight: 1.0 }];
   }
 
-  const sortedByImportance = visemes
-    .map((v, idx) => ({
-      v,
-      idx,
-      importance:
-        v.shape === 'A' || v.shape === 'F' ? 10 :
-        v.shape === 'D' || v.shape === 'O' || v.shape === 'E' ? 8 :
-        idx === 0 || idx === visemes.length - 1 ? 5 :
-        v.weight,
-    }))
-    .sort((a, b) => b.importance - a.importance)
+  // When condensing to maxCount >= 2:
+  // MUST PRESERVE CHRONOLOGICAL ORDER (Speech flows forward in time).
+  // Calculate an articulatory priority score for each phoneme:
+  // - Bilabial/labiodental closures ('A', 'F'): visually paramount (+10)
+  // - Primary vowel nuclei ('D', 'O', 'E'): mouth openness / rounding (+8)
+  // - Secondary vowels / sibilants ('C', 'G', 'H'): (+6)
+  // - Word onset (index 0) & offset (last index): lexical boundary clarity (+4)
+  const scored = visemes.map((v, idx) => {
+    let score = v.weight;
+    if (v.shape === 'A' || v.shape === 'F') score += 10;
+    else if (v.shape === 'D' || v.shape === 'O' || v.shape === 'E') score += 8;
+    else if (v.shape === 'G' || v.shape === 'H') score += 6;
+    else if (v.shape === 'C') score += 5;
+
+    if (idx === 0) score += 4;
+    if (idx === visemes.length - 1) score += 3;
+
+    return { v, idx, score };
+  });
+
+  // Pick top maxCount by score, then sort STRICTLY by original chronological index
+  const selectedItems = scored
+    .sort((a, b) => b.score - a.score)
     .slice(0, maxCount)
     .sort((a, b) => a.idx - b.idx);
 
-  const selected = sortedByImportance.map((item) => item.v);
-  const totalW = selected.reduce((sum, item) => sum + item.weight, 0);
-  return selected.map((item) => ({
-    shape: item.shape,
-    weight: item.weight / totalW,
+  // Merge adjacent duplicate shapes
+  const merged: PhonemeViseme[] = [];
+  for (const item of selectedItems) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.shape === item.v.shape) {
+      prev.weight += item.v.weight;
+    } else {
+      merged.push({ ...item.v });
+    }
+  }
+
+  // Normalize weights so they sum to 1.0
+  const totalW = merged.reduce((sum, item) => sum + item.weight, 0);
+  return merged.map((item) => ({
+    ...item,
+    weight: totalW > 0 ? item.weight / totalW : 1.0 / merged.length,
   }));
 }
 
@@ -539,7 +580,6 @@ export function buildSpeechTimelineCues(
   _silenceIntervals?: Array<{ start: number; end: number }>
 ): TimelineCue[] {
   const cues: TimelineCue[] = [];
-  const minDur = Math.max(0.04, (tuning?.minDurationMs ?? 90) / 1000);
   const speed = tuning?.speed || 'natural';
   const maxOpenVowelSec = speed === 'slower' ? 0.35 : speed === 'faster' ? 0.20 : 0.26;
 
@@ -681,9 +721,12 @@ export function buildSpeechTimelineCues(
         const pauseAlloc = (hasPausePunctuation && !hasAcousticPauseAfter && actualWordDuration > 0.35) ? 0.10 : 0;
         const speechDuration = actualWordDuration - pauseAlloc;
 
-        const rawVisemes = extractWordVisemes(rawWord);
-        const maxShapes = Math.max(1, Math.floor(speechDuration / minDur));
-        const visemes = condenseVisemes(rawVisemes, maxShapes);
+        const wordArt = getWordArticulation(rawWord);
+        const minSliceSec = tuning?.minDurationMs && tuning.minDurationMs >= 140
+          ? Math.max(0.038, (tuning.minDurationMs / 1000) * 0.75)
+          : 0.038;
+        const maxShapes = Math.max(1, Math.floor(speechDuration / minSliceSec));
+        const visemes = condenseVisemes(wordArt.visemes, maxShapes);
         let currShapeStart = currWordStart;
 
         for (let v = 0; v < visemes.length; v++) {
@@ -709,7 +752,9 @@ export function buildSpeechTimelineCues(
               end: currShapeStart + peakDuration,
               shape: viseme.shape,
               text: cleanWord,
-              source: 'heuristic',
+              phoneme: viseme.phoneme || wordArt.phonemes,
+              ipa: viseme.ipa || wordArt.ipa,
+              source: wordArt.source,
             });
 
             // 2. Easing shape (relaxing towards mouth center C or B)
@@ -720,7 +765,9 @@ export function buildSpeechTimelineCues(
               end: currShapeStart + shapeDuration,
               shape: easingShape,
               text: cleanWord,
-              source: 'heuristic',
+              phoneme: viseme.phoneme || wordArt.phonemes,
+              ipa: viseme.ipa || wordArt.ipa,
+              source: wordArt.source,
             });
           } else {
             cues.push({
@@ -729,7 +776,9 @@ export function buildSpeechTimelineCues(
               end: currShapeStart + shapeDuration,
               shape: viseme.shape,
               text: cleanWord,
-              source: 'heuristic',
+              phoneme: viseme.phoneme || wordArt.phonemes,
+              ipa: viseme.ipa || wordArt.ipa,
+              source: wordArt.source,
             });
           }
 
@@ -744,7 +793,9 @@ export function buildSpeechTimelineCues(
             end: wordEnd,
             shape: 'X',
             text: 'pause',
-            source: 'heuristic',
+            phoneme: 'pause',
+            ipa: 'x',
+            source: 'heuristic-fallback',
           });
         }
 
@@ -761,7 +812,9 @@ export function buildSpeechTimelineCues(
         end: nextInterval.start,
         shape: 'X',
         text: 'pause',
-        source: 'heuristic',
+        phoneme: 'pause',
+        ipa: 'x',
+        source: 'heuristic-fallback',
       });
     }
   }
@@ -775,7 +828,9 @@ export function buildSpeechTimelineCues(
       end: totalDuration,
       shape: 'X',
       text: 'pause',
-      source: 'heuristic',
+      phoneme: 'pause',
+      ipa: 'x',
+      source: 'heuristic-fallback',
     });
   }
 
@@ -787,8 +842,8 @@ export function buildSpeechTimelineCues(
  * - Merges consecutive identical shapes
  * - Caps open mouth holds so mouths never stay frozen open
  * - Preserves essential closures (A, F, B, G)
- * - Eliminates unintended gaps or overlaps
- * - Ensures all cues end exactly at totalDuration
+ * - Eliminates sub-frame jitter (< 35ms)
+ * - Ensures contiguous timeline alignment
  */
 export function smoothAndFilterCues(
   rawCues: TimelineCue[],
@@ -797,7 +852,6 @@ export function smoothAndFilterCues(
 ): TimelineCue[] {
   if (rawCues.length === 0) return [];
 
-  const minDur = Math.max(0.04, (tuning?.minDurationMs ?? 90) / 1000);
   const speed = tuning?.speed || 'natural';
   const maxOpenVowelSec = speed === 'slower' ? 0.35 : speed === 'faster' ? 0.20 : 0.26;
 
@@ -812,14 +866,14 @@ export function smoothAndFilterCues(
     if (prev && prev.shape.toUpperCase() === cue.shape.toUpperCase()) {
       prev.end = Math.max(prev.end, cue.end);
       if (!prev.text && cue.text) prev.text = cue.text;
+      if (!prev.phoneme && cue.phoneme) prev.phoneme = cue.phoneme;
+      if (!prev.ipa && cue.ipa) prev.ipa = cue.ipa;
+      if (!prev.source && cue.source) prev.source = cue.source;
     } else {
       merged.push({
+        ...cue,
         id: cue.id || generateId('cue'),
-        start: cue.start,
-        end: cue.end,
         shape: cue.shape.toUpperCase(),
-        text: cue.text,
-        source: cue.source,
       });
     }
   }
@@ -839,12 +893,11 @@ export function smoothAndFilterCues(
         const shape = isMiddle ? (cue.shape === 'D' ? 'C' : 'B') : cue.shape;
 
         capped.push({
+          ...cue,
           id: generateId('cue'),
           start: curr,
           end: curr + segmentDur,
           shape,
-          text: cue.text,
-          source: cue.source,
         });
         curr += segmentDur;
       }
@@ -853,8 +906,10 @@ export function smoothAndFilterCues(
     }
   }
 
-  // 3. Third pass: Enforce minDurationMs by merging sub-minimum speech shapes into adjacent dominant shapes
+  // 3. Third pass: Enforce minimum frame duration to eliminate sub-frame flicker (< 35ms)
+  // while preserving crisp consonant closures and speech flow
   const minFiltered: TimelineCue[] = [];
+  const minDur = Math.max(0.035, (tuning?.minDurationMs ?? 90) / 1000);
   for (let i = 0; i < capped.length; i++) {
     const cue = capped[i];
     const dur = cue.end - cue.start;
@@ -866,15 +921,17 @@ export function smoothAndFilterCues(
     }
 
     const isClosure = cue.shape === 'A' || cue.shape === 'F';
-    const effectiveMin = isClosure ? Math.min(0.05, minDur) : minDur;
+    const effectiveMin = isClosure
+      ? Math.min(0.045, minDur)
+      : (tuning?.speed === 'slower' || minDur >= 0.16)
+      ? Math.min(0.17, minDur * 0.92)
+      : 0.035;
 
     if (dur < effectiveMin) {
       if (minFiltered.length > 0 && minFiltered[minFiltered.length - 1].shape !== 'X') {
-        // Absorb into previous speech shape
         minFiltered[minFiltered.length - 1].end = cue.end;
         continue;
       } else if (i + 1 < capped.length && capped[i + 1].shape !== 'X') {
-        // Expand next speech shape backwards to prevent gap
         capped[i + 1].start = cue.start;
         continue;
       }
@@ -891,6 +948,9 @@ export function smoothAndFilterCues(
     if (prev && prev.shape.toUpperCase() === cue.shape.toUpperCase()) {
       prev.end = Math.max(prev.end, cue.end);
       if (!prev.text && cue.text) prev.text = cue.text;
+      if (!prev.phoneme && cue.phoneme) prev.phoneme = cue.phoneme;
+      if (!prev.ipa && cue.ipa) prev.ipa = cue.ipa;
+      if (!prev.source && cue.source) prev.source = cue.source;
     } else {
       reMerged.push({ ...cue });
     }

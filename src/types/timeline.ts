@@ -1,12 +1,23 @@
 import { RhubarbShape } from './mouth';
 
+export type CueAlignmentSource =
+  | 'rhubarb'
+  | 'heuristic'
+  | 'manual'
+  | 'dictionary'
+  | 'phoneme-rule'
+  | 'heuristic-fallback'
+  | 'unknown';
+
 export interface TimelineCue {
   id: string;
   start: number; // in seconds
   end: number;   // in seconds
   shape: RhubarbShape | string;
   text?: string; // phoneme, word, or sound associated with this cue
-  source?: 'rhubarb' | 'heuristic' | 'manual'; // distinction between acoustic Rhubarb timestamps and heuristic estimates
+  phoneme?: string; // specific sound token (e.g. "m", "aa", "bh")
+  ipa?: string;     // IPA phonetic representation (e.g. "bʱ", "ɑː")
+  source?: CueAlignmentSource; // distinction between acoustic Rhubarb, dictionary match, phoneme rules, or heuristic
 }
 
 export interface CueWarning {
